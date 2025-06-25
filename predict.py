@@ -167,6 +167,7 @@ start_idx = 0  # Track index for where to write in the file
 
 def get_latents(latent_shape, n_direct, alpha=1.0):
     """
+    The noise correlation done in Algorithm 2 reparameterized with alpha instead of rho.
     Variance preserving function for the noise z. 
     alpha=1.0 means fixed noise, 
     alpha=0.0 means uncorrelated noise
@@ -209,10 +210,10 @@ for previous, current, time_labels in tqdm(loader):
         predicted_combined = torch.zeros((n_samples, n_ens, n_times, num_variables, dx, dy), device=device)
 
         for i in tqdm(range(n_iter)):
-            # First option uses same noise for all times
+            # First option uses same noise for all times (Algorithm 1)
             latents = torch.randn(latent_shape, device=device)
             latents = latents.repeat_interleave(n_direct, dim=0)
-            # Second option controls the correlation of the noise with alpha
+            # Second option controls the correlation of the noise with alpha (Algorithm 2)
             # latents = get_latents(latent_shape, n_direct, alpha=1.0)
             
             if deterministic:
