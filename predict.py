@@ -185,7 +185,7 @@ def get_latents(latent_shape, n_direct, alpha=1.0):
 
     return z
 
-# Predict
+# Combined implementation of Algorithm 1, 2 and 3 in the paper
 for previous, current, time_labels in tqdm(loader):        
     n_samples = current.shape[0]
 
