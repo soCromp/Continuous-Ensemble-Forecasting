@@ -52,9 +52,15 @@ t_iter =        config['t_iter']
 n_ens =         config['n_ens']
 model_path =    config['model']
 
+if 'alpha' in config:
+    alpha = config['alpha']
+else:
+    alpha = 1.0
+
 print(name, flush=True)
 print("[t_direct, t_iter, t_max]", [t_direct, t_iter, t_max],  flush=True)
 print("n_ens:", n_ens,  flush=True)
+print("alpha:", alpha,  flush=True)
 
 # Copy config
 result_path = Path(f'{result_directory}/{name}')
@@ -168,6 +174,7 @@ start_idx = 0  # Track index for where to write in the file
 def get_latents(latent_shape, n_direct, alpha=1.0):
     """
     The noise correlation done in Algorithm 2 reparameterized with alpha instead of rho.
+    Note that this will only affect the direct forecasting, not the iterative timesteps.
     Variance preserving function for the noise z. 
     alpha=1.0 means fixed noise, 
     alpha=0.0 means uncorrelated noise
@@ -210,11 +217,8 @@ for previous, current, time_labels in tqdm(loader):
         predicted_combined = torch.zeros((n_samples, n_ens, n_times, num_variables, dx, dy), device=device)
 
         for i in tqdm(range(n_iter)):
-            # First option uses same noise for all times (Algorithm 1)
-            latents = torch.randn(latent_shape, device=device)
-            latents = latents.repeat_interleave(n_direct, dim=0)
-            # Second option controls the correlation of the noise with alpha (Algorithm 2)
-            # latents = get_latents(latent_shape, n_direct, alpha=1.0)
+            # Control the correlation of the noise with alpha (Algorithm 2)
+            latents = get_latents(latent_shape, n_direct, alpha=alpha)
             
             if deterministic:
                 predicted = model(class_labels, direct_time_labels_repeated / max_horizon)
