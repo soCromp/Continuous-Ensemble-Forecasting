@@ -8,35 +8,48 @@ import pandas as pd
 import datetime
 from utils import ERA5Dataset
 from torch.utils.data import DataLoader
+import multidict
+import glob
 
-
-file_directory = "ERA5_DATA_LOCATION"
-save_directory = "./data"
+topo = '/home/cyclone/topo.nc'
+file_directory = "/mnt/data/sonia/codicast-data/5.625"
+save_directory = "/mnt/data/sonia/cef/in/multivar"
+years = range(1940, 2025) # all splits
 os.makedirs(save_directory, exist_ok=True)
 
 field_names = {
-    "orography": "orog",
+    "hgt": "orog",
     "lsm": "lsm",
 }
 
-var_names = {
-    "geopotential_500": ("z500", "z"),
-    "temperature_850": ("t850", "t"),
-    "2m_temperature": ("t2m", "t2m"),
-    "10m_u_component_of_wind": ("u10", "u10"),
-    "10m_v_component_of_wind": ("v10", "v10"),
-}
+var_names = multidict.MultiDict([
+    ("slp", ("slp", "slp")),
+    ("wind_500hpa", ("u", "u")),
+    ("wind_500hpa", ("v", "v")),
+    ("temperature", ('t', 't')),
+    ("humidity", ("q", "q")),
+])
+    # "geopotential_500": ("z500", "z"),
+    # "temperature_850": ("t850", "t"),
+    # "2m_temperature": ("t2m", "t2m"),
+    # "10m_u_component_of_wind": ("u10", "u10"),
+    # "10m_v_component_of_wind": ("v10", "v10"),
 
 chunk_size = 1000
 
 # Constants
 var_name = "constants"
-file_pattern = f"{file_directory}/{var_name}/{var_name}*.nc"
-df = xr.open_mfdataset(file_pattern, combine='by_coords')
+# file_pattern = f"{file_directory}/{var_name}/{var_name}*.nc"
+# df = xr.open_mfdataset(file_pattern, combine='by_coords')
+df = xr.open_dataset(topo)
+new_lat = np.linspace(-90 + (5.625/2), 90 - (5.625/2), 32)
+new_lon = np.linspace(0 + (5.625/2), 360 - (5.625/2), 64)
+df = df.interp(lat=new_lat, lon=new_lon, method="linear")
+print('topo', df)
 
 lat = df['lat'].values
 lon = df['lon'].values
-np.savez(f'{save_directory}/latlon_1979-2018_5.625deg.npz', lat=lat, lon=lon)
+np.savez(f'{save_directory}/latlon_1940-2024_5.625deg.npz', lat=lat, lon=lon)
 
 ## Static fields
 static_fields = []
@@ -46,19 +59,25 @@ for field_name, var_name in field_names.items():
     static_fields.append(data_array)
     save_name += var_name + '_'
 
-np.save(f'{save_directory}/{save_name}1979-2018_5.625deg.npy', np.stack(static_fields, axis=0))
+np.save(f'{save_directory}/{save_name}1940-2024_5.625deg.npy', np.stack(static_fields, axis=0))
 
 # Variables
 file_prefix, names = list(var_names.items())[0]
 var_name = names[0]
 short_name = names[1]
-file_pattern = f"{file_directory}/{file_prefix}/{file_prefix}*.nc"
-ds = xr.open_mfdataset(file_pattern, combine='by_coords', chunks={'lat': 32, 'lon': 64})
+
+file_list = []
+for year in years:
+    # This assumes the year appears immediately after the prefix in the filename
+    pattern = f"{file_directory}/{file_prefix}/{file_prefix}_{year}_5.625deg.nc"
+    file_list.extend(glob.glob(pattern))
+ds = xr.open_mfdataset(file_list, combine='by_coords', chunks={'lat': 32, 'lon': 64})
 combined_shape = (ds[short_name].shape[0], len(var_names), ds[short_name].shape[1], ds[short_name].shape[2])
-print("Shape:", combined_shape)
+print("Will be shape:", combined_shape)
+print(ds)
 
 save_name = '_'.join([var_name[0] for var_name in var_names.values()])
-memmap_file_path = f'{save_directory}/{save_name}_1979-2018_5.625deg.npy'
+memmap_file_path = f'{save_directory}/{save_name}_1940-2024_5.625deg.npy'
 memmap_array = np.memmap(memmap_file_path, dtype='float32', mode='w+', shape=combined_shape)
 
 statistics = {}
@@ -70,11 +89,18 @@ for file_prefix, names in var_names.items():
     var_name = names[0]
     short_name = names[1]
 
-    file_pattern = f"{file_directory}/{file_prefix}/{file_prefix}*.nc"
-    print(f"Opening: {file_pattern}")
+    file_list = []
+    for year in years:
+        # This assumes the year appears immediately after the prefix in the filename
+        pattern = f"{file_directory}/{file_prefix}/{file_prefix}_{year}_5.625deg.nc"
+        file_list.extend(glob.glob(pattern))
     
     # Open the dataset with dask for efficient memory handling
-    ds = xr.open_mfdataset(file_pattern, combine='by_coords', chunks={'lat': 32, 'lon': 64})
+    ds = xr.open_mfdataset(file_list, combine='by_coords', chunks={'lat': 32, 'lon': 64})
+    if file_prefix == 'wind_500hpa' or file_prefix == 'humidity':
+        ds = ds.sel(pressure_level=500)
+    if file_prefix == 'temperature':
+        ds = ds.sel(pressure_level=925)
     array = ds[short_name]
     
     # Loop through the chunks of the array and write each chunk to the memmap file
@@ -120,11 +146,14 @@ std_data = torch.tensor([stats["std"] for (key, stats) in statistics.items() if 
 norm_factors = np.stack([mean_data, std_data], axis=0)
 
 # Get the number of samples, training and validation samples
-ti = pd.date_range(datetime.datetime(1979,1,1,0), datetime.datetime(2018,12,31,23), freq='1h')
-n_samples, n_train, n_val = len(ti), sum(ti.year <= 2015), sum((ti.year >= 2016) & (ti.year <= 2017))
+total_interval = pd.date_range(datetime.datetime(1940,1,1,0), datetime.datetime(2024,12,31,23), freq='6h')
+train_interval = pd.date_range(datetime.datetime(1940,1,1,0), datetime.datetime(2015, 8,31,23), freq='6h')
+val_interval = pd.date_range(datetime.datetime(2015,9,1,0), datetime.datetime(2015,12,31,23), freq='6h')
+test_interval = pd.date_range(datetime.datetime(2016,1,1,0), datetime.datetime(2024,12,31,23), freq='6h')
+n_samples, n_train, n_val = len(total_interval), len(train_interval), len(val_interval)
 
 kwargs = {
-            'dataset_path':     f'{save_directory}/{save_name}_1979-2018_5.625deg.npy',
+            'dataset_path':     f'{save_directory}/{save_name}_1940-2024_5.625deg.npy',
             'sample_counts':    (n_samples, n_train, n_val),
             'dimensions':       (len(var_names), 32, 64),
             'max_horizon':      240, # For scaling the time embedding

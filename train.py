@@ -17,10 +17,10 @@ from utils import *
 from loss import *
 from sampler import *
 
-data_directory = '../data'
-result_directory = './models'
+data_directory = '/mnt/data/sonia/cef/in/multivar'
+result_directory = '/mnt/data/sonia/cef/models/multivar/'
 
-variable_names = ['z500', 't850', 't2m', 'u10', 'v10']
+variable_names = ['slp', 'u', 'v', 't', 'q']
 num_variables, num_static_fields = 5, 2
 max_horizon = 240 # Maximum time horizon for the model. Used for scaling time embedding and making sure we don't go outside dataset
 
@@ -79,14 +79,17 @@ def renormalize(x, mean_ar=mean_data, std_ar=std_data):
     return x
 
 # Get the number of samples, training and validation samples
-ti = pd.date_range(datetime.datetime(1979,1,1,0), datetime.datetime(2018,12,31,23), freq='1h')
-n_samples, n_train, n_val = len(ti), sum(ti.year <= 2015), sum((ti.year >= 2016) & (ti.year <= 2017))
+total_interval = pd.date_range(datetime.datetime(1940,1,1,0), datetime.datetime(2024,12,31,23), freq='6h')
+train_interval = pd.date_range(datetime.datetime(1940,1,1,0), datetime.datetime(2015, 8,31,23), freq='6h')
+val_interval = pd.date_range(datetime.datetime(2015,9,1,0), datetime.datetime(2015,12,31,23), freq='6h')
+test_interval = pd.date_range(datetime.datetime(2016,1,1,0), datetime.datetime(2024,12,31,23), freq='6h')
+n_samples, n_train, n_val = len(total_interval), len(train_interval), len(val_interval)
 
 # Load the latitudes and longitudes
-lat, lon = np.load(f'{data_directory}/latlon_1979-2018_5.625deg.npz').values()
+lat, lon = np.load(f'{data_directory}/latlon_1940-2024_5.625deg.npz').values()
 
 kwargs = {
-            'dataset_path':     f'{data_directory}/z500_t850_t2m_u10_v10_1979-2018_5.625deg.npy',
+            'dataset_path':     f'{data_directory}/slp_u_v_t_q_1940-2024_5.625deg.npy',
             'sample_counts':    (n_samples, n_train, n_val),
             'dimensions':       (num_variables, len(lat), len(lon)),
             'max_horizon':      max_horizon, # For scaling the time embedding
@@ -96,7 +99,7 @@ kwargs = {
             'dtype':            'float32',
             'conditioning_times':    conditioning_times,
             'lead_time_range':  [t_min, t_max, delta_t],
-            'static_data_path': f'{data_directory}/orog_lsm_1979-2018_5.625deg.npy',
+            'static_data_path': f'{data_directory}/orog_lsm_1940-2024_5.625deg.npy',
             'random_lead_time': 1,
             }
 
@@ -185,7 +188,7 @@ for epoch in range(num_epochs):
             loss = loss_fn(model, current, previous, time_label/max_horizon)
             total_val_loss += loss.item()
                 
-        avg_val_loss = total_val_loss / len(val_time_loader)
+        avg_val_loss = total_val_loss / len(val_time_dataset)
 
     # Checkpointing
     if avg_val_loss < best_val_loss:

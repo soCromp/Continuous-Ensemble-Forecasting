@@ -46,6 +46,8 @@ class ERA5Dataset(torch.utils.data.Dataset):
         if static_data_path != None:
             self.static_fields = self.load_static_data()      
             self.static_vars = self.static_fields.shape[1]
+            
+        print(self.static_fields)
         
         self.conditioning_times = conditioning_times
         self.input_times = self.num_variables * len(self.conditioning_times)
@@ -74,7 +76,7 @@ class ERA5Dataset(torch.utils.data.Dataset):
 
         # Apply min-max scaling: (x - min) / (max - min)
         scaled_static_fields = (static_fields - min_vals[:, None, None]) / range_vals[:, None, None]
-        return scaled_static_fields
+        return scaled_static_fields.squeeze()
 
     def _generate_indices(self):
         """Generates indices for dataset partitioning according to the specified dataset_mode."""

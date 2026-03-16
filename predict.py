@@ -20,11 +20,11 @@ from utils import *
 from loss import *
 from sampler import *
 
-data_directory = '../data'
-result_directory = './results'
-model_directory = './models'
+result_directory = '/mnt/data/sonia/cef/results/multivar'
+data_directory = '/mnt/data/sonia/cef/in/multivar'
+model_directory = '/mnt/data/sonia/cef/models/multivar'
 
-variable_names = ['z500', 't850', 't2m', 'u10', 'v10']
+variable_names = ['slp', 'u', 'v', 't', 'q']
 num_variables, num_static_fields = 5, 2
 max_horizon = 240 # Maximum time horizon for the model. Used for scaling time embedding and making sure we don't go outside dataset
 
@@ -81,11 +81,15 @@ def renormalize(x, mean_ar=mean_data, std_ar=std_data):
     return x
 
 # Get the number of samples, training and validation samples
-ti = pd.date_range(datetime.datetime(1979,1,1,0), datetime.datetime(2018,12,31,23), freq='1h')
-n_samples, n_train, n_val = len(ti), sum(ti.year <= 2015), sum((ti.year >= 2016) & (ti.year <= 2017))
+total_interval = pd.date_range(datetime.datetime(1940,1,1,0), datetime.datetime(2024,12,31,23), freq='6h')
+train_interval = pd.date_range(datetime.datetime(1940,1,1,0), datetime.datetime(2015, 8,31,23), freq='6h')
+val_interval = pd.date_range(datetime.datetime(2015,9,1,0), datetime.datetime(2015,12,31,23), freq='6h')
+test_interval = pd.date_range(datetime.datetime(2016,1,1,0), datetime.datetime(2024,12,31,23), freq='6h')
+n_samples, n_train, n_val = len(total_interval), len(train_interval), len(val_interval)
+print('lengths', n_samples, n_train, n_val, flush=True)
 
 # Load the latitudes and longitudes
-lat, lon = np.load(f'{data_directory}/latlon_1979-2018_5.625deg.npz').values()
+lat, lon = np.load(f'{data_directory}/latlon_1940-2024_5.625deg.npz').values()
 
 # Load config of trained model
 train_config_path = f'{model_directory}/{model_path}/config.json'
@@ -104,7 +108,7 @@ if t_direct < delta_t:
     print(f"The direct lead time {t_direct} is smaller than the trained dt {delta_t}")
 
 kwargs = {
-            'dataset_path':     f'{data_directory}/z500_t850_t2m_u10_v10_1979-2018_5.625deg.npy',
+            'dataset_path':     f'{data_directory}/slp_u_v_t_q_1940-2024_5.625deg.npy',
             'sample_counts':    (n_samples, n_train, n_val),
             'dimensions':       (num_variables, len(lat), len(lon)),
             'max_horizon':      max_horizon, # For scaling the time embedding
@@ -114,7 +118,7 @@ kwargs = {
             'dtype':            'float32',
             'conditioning_times':    conditioning_times,
             'lead_time_range':  [t_min, t_max, t_direct],
-            'static_data_path': f'{data_directory}/orog_lsm_1979-2018_5.625deg.npy',
+            'static_data_path': f'{data_directory}/orog_lsm_1940-2024_5.625deg.npy',
             'random_lead_time': 0,
             }
 
@@ -231,17 +235,23 @@ for previous, current, time_labels in tqdm(loader):
             predicted = predicted.view(n_samples*n_ens, n_direct, num_variables, dx, dy)
             class_labels = class_labels.view(n_samples*n_ens, n_direct, n_conditions, dx, dy)[:, 0]
             
+            ###
             initial_condition = predicted[:,-1]
             
-            idx = np.argwhere(direct_time_labels.cpu().numpy() == - conditioning_times[1])
-            
-            if idx.size == 0:
-                raise ValueError(f"Previous timestep {-conditioning_times[1]} not found in forecasting times {direct_time_labels.cpu().numpy()}")
-            idx = idx[0][0] + 1
-           
-            earlier_initial_condition = class_labels[:,:num_variables] if idx == len(direct_time_labels) else predicted[:,-(idx+1)]
-
-            class_labels = torch.cat((initial_condition, earlier_initial_condition), dim=1).repeat_interleave(n_direct, dim=0)
+            # Only fetch earlier initial conditions if the model expects them (len > 1)
+            if len(conditioning_times) > 1:
+                idx = np.argwhere(direct_time_labels.cpu().numpy() == - conditioning_times[1])
+                
+                if idx.size == 0:
+                    raise ValueError(f"Previous timestep {-conditioning_times[1]} not found in forecasting times {direct_time_labels.cpu().numpy()}")
+                idx = idx[0][0] + 1
+               
+                earlier_initial_condition = class_labels[:,:num_variables] if idx == len(direct_time_labels) else predicted[:,-(idx+1)]
+    
+                class_labels = torch.cat((initial_condition, earlier_initial_condition), dim=1).repeat_interleave(n_direct, dim=0)
+            else:
+                class_labels = initial_condition.repeat_interleave(n_direct, dim=0)
+            ###
             
             if num_static_fields != 0:
                 class_labels = torch.cat((class_labels, static_fields), dim=1)
