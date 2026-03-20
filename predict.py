@@ -20,6 +20,8 @@ from utils import *
 from loss import *
 from sampler import *
 
+START = 2352
+
 result_directory = '/mnt/data/sonia/cef/results/multivar'
 data_directory = '/mnt/data/sonia/cef/in/multivar'
 model_directory = '/mnt/data/sonia/cef/models/multivar'
@@ -169,9 +171,9 @@ n_conditions = previous.shape[1]
 dx = current.shape[2]
 dy = current.shape[3]    
 
-predictions = zarr.open(f'{result_path}/{name}.zarr', mode='w', shape=(len(dataset), n_ens, n_times, num_variables, dx, dy), 
+predictions = zarr.open(f'{result_path}/{name}.zarr', mode='r+', shape=(len(dataset), n_ens, n_times, num_variables, dx, dy), 
                                 chunks = (1, n_ens, n_times, num_variables, dx, dy),
-                                dtype='float32', overwrite=True)
+                                dtype='float32')
 
 start_idx = 0  # Track index for where to write in the file
 
@@ -198,7 +200,20 @@ def get_latents(latent_shape, n_direct, alpha=1.0):
     return z
 
 # Combined implementation of Algorithm 1, 2 and 3 in the paper
-for previous, current, time_labels in tqdm(loader):        
+for previous, current, time_labels in tqdm(loader):
+    n_samples_in_batch = current.shape[0]
+    if start_idx + n_samples_in_batch <= START: # skip entire batch because it's before START
+        start_idx += n_samples_in_batch
+        continue
+    elif start_idx < START: # batch begins before START and ends after START: split batch
+        #start_idx += n_samples_in_batch
+        #continue
+        skip_in_batch = START - start_idx
+        previous = previous[skip_in_batch:]
+        current = current[skip_in_batch:]
+        time_labels = time_labels[skip_in_batch:]
+        start_idx = START
+        
     n_samples = current.shape[0]
 
     with torch.no_grad():
@@ -283,6 +298,7 @@ dx_truth_list = []
 i = 0
 with torch.no_grad():
     for previous, current, time_labels in tqdm(loader):
+        
         n_times = time_labels.shape[1]
         n_samples, _, dx, dy = current.shape
 
