@@ -20,7 +20,8 @@ from utils import *
 from loss import *
 from sampler import *
 
-START = 2352
+START = 1
+STOP = 24
 
 result_directory = '/mnt/data/sonia/cef/results/multivar'
 data_directory = '/mnt/data/sonia/cef/in/multivar'
@@ -122,6 +123,7 @@ kwargs = {
             'lead_time_range':  [t_min, t_max, t_direct],
             'static_data_path': f'{data_directory}/orog_lsm_1940-2024_5.625deg.npy',
             'random_lead_time': 0,
+            'spinup': 0
             }
 
 input_times = (1 + len(conditioning_times))*num_variables + num_static_fields
@@ -171,7 +173,7 @@ n_conditions = previous.shape[1]
 dx = current.shape[2]
 dy = current.shape[3]    
 
-predictions = zarr.open(f'{result_path}/{name}.zarr', mode='r+', shape=(len(dataset), n_ens, n_times, num_variables, dx, dy), 
+predictions = zarr.open(f'{result_path}/{name}.zarr', mode='w', shape=(len(dataset), n_ens, n_times, num_variables, dx, dy), 
                                 chunks = (1, n_ens, n_times, num_variables, dx, dy),
                                 dtype='float32')
 
@@ -213,6 +215,15 @@ for previous, current, time_labels in tqdm(loader):
         current = current[skip_in_batch:]
         time_labels = time_labels[skip_in_batch:]
         start_idx = START
+        
+    if start_idx >= STOP:
+        break  # Entire batch is beyond our stop point
+    if start_idx + n_samples_in_batch > STOP:
+        # Batch straddles the stop point: truncate it
+        keep = STOP - start_idx
+        previous = previous[:keep]
+        current = current[:keep]
+        time_labels = time_labels[:keep]
         
     n_samples = current.shape[0]
 

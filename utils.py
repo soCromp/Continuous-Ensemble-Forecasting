@@ -34,7 +34,7 @@ class ERA5Dataset(torch.utils.data.Dataset):
         self.num_variables, self.n_lat, self.n_lon = dimensions
         self.max_horizon = max_horizon
         self.lead_time = lead_time
-        self.spinup = spinup + 24 # Change this if we ever look back more than 24h
+        self.spinup = spinup
         self.spacing = spacing
         self.mean, self.std_dev = norm_factors
         self.t_min, self.t_max, self.delta_t = lead_time_range
