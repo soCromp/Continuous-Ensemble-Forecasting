@@ -20,8 +20,8 @@ from utils import *
 from loss import *
 from sampler import *
 
-START = 1
-STOP = 24
+START = 12888
+STOP = 30000000
 
 result_directory = '/mnt/data/sonia/cef/results/multivar'
 data_directory = '/mnt/data/sonia/cef/in/multivar'
@@ -114,7 +114,7 @@ kwargs = {
             'dataset_path':     f'{data_directory}/slp_u_v_t_q_1940-2024_5.625deg.npy',
             'sample_counts':    (n_samples, n_train, n_val),
             'dimensions':       (num_variables, len(lat), len(lon)),
-            'max_horizon':      max_horizon, # For scaling the time embedding
+            'max_horizon':      t_max, # For scaling the time embedding
             'norm_factors':     norm_factors,
             'device':           device,
             'spacing':          spacing,
@@ -251,9 +251,9 @@ for previous, current, time_labels in tqdm(loader):
             latents = get_latents(latent_shape, n_direct, alpha=alpha)
             
             if deterministic:
-                predicted = model(class_labels, direct_time_labels_repeated / max_horizon)
+                predicted = model(class_labels, direct_time_labels_repeated / 240)
             else:
-                predicted = sampler_fn(model, latents, class_labels, direct_time_labels_repeated / max_horizon, 
+                predicted = sampler_fn(model, latents, class_labels, direct_time_labels_repeated / 240, 
                                     sigma_max=80, sigma_min=0.03, rho=7, num_steps=20, S_churn=2.5, S_min=0.75, S_max=80, S_noise=1.05)
 
             predicted_combined[:, :, i*n_direct:(i+1)*n_direct] = predicted.view(n_samples, n_ens, n_direct, num_variables, dx, dy)
@@ -316,6 +316,8 @@ with torch.no_grad():
         truth = renormalize(current.to(device).view(n_samples, n_times, num_variables, dx, dy))
        
         forecast = predictions[i:i + truth.shape[0]]
+        if forecast.shape[2] != truth.shape[1]:
+            forecast = forecast[:, :, :truth.shape[1]]
         forecast = torch.tensor(forecast, device=device)
         i = i + truth.shape[0]
         

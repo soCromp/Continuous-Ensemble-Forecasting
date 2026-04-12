@@ -1,3 +1,5 @@
+# activate svd
+
 from pyproj import Proj 
 from scipy.interpolate import RegularGridInterpolator
 import pandas as pd 
@@ -9,12 +11,16 @@ from tqdm import tqdm
 from random import randint
 import datetime 
 
-
-predpath = '/mnt/data/sonia/cef/results/multivar/continuous-24+6h/continuous-24+6h.zarr'
-outpath = '/mnt/data/sonia/cef/patches/multivar/'
+promptpath = '/home/cyclone/train/multivar/0.25/date/natlantic/test'
+predpath = '/mnt/data/sonia/cef/results/multivar/continuous-24+6h-final/continuous-24+6h.zarr'
+outpath = '/mnt/data/sonia/cef/patches/multivar/test'
 os.makedirs(outpath, exist_ok=True)
 
-test_interval = pd.date_range(datetime.datetime(2016,1,1,12), datetime.datetime(2024,12,31,23), freq='6h')
+# preds size (13145, 10, 8, 5, 32, 64): (t, ensemble, predictions into future, lat, lon)
+preds = zarr.open(predpath, mode='r')
+test_interval = pd.date_range(datetime.datetime(2016,1,1,6), datetime.datetime(2024,12,31,23), freq='6h')
+START_TIME = datetime.datetime(2016,1,1,6)
+
 
 regmask = xr.open_dataset('/home/cyclone/regmask_0723_anl.nc')
 
@@ -60,6 +66,7 @@ tracks = tracks[tracks['split']>1] # only storms in basin and in val or test spl
 
 sids = tracks['sid'].unique().tolist()
 print('num storms:', len(sids))
+print(tracks.iloc[-30:])
 
 resolution = 5.625
 l = 800 # (half length: l/2 km from center in each direction)
@@ -70,30 +77,32 @@ y_lin = np.linspace(-l, l, s)
 x_grid, y_grid = np.meshgrid(x_lin, y_lin) # equal-spaced points from -l to l in both x and y dimensions
 
 
-for sid in tqdm(enumerate(sids)):
-    records = tracks[tracks['sid']==sid]
-    boxes = []
-    track = []
+for sid in tqdm(sids):
+    records = tracks[tracks['sid']==sid].to_dict('records')
+    prompt = np.load(os.path.join(promptpath, str(sid), '0.npy'))
+    ensemble_ind = randint(0,9) # inclusive
+    
+    # start with stamp 1 since 0 will come from prompt:
+    target_date = pd.Timestamp(records[1]['year'], records[1]['month'], records[1]['day'], records[1]['hour'])
+    index = int((target_date - START_TIME) / pd.Timedelta(hours=6))
+    try:
+        worlds = preds[index, ensemble_ind, :len(records)-1] 
+    except:
+        print(target_date, index)
+        break
+
+    boxes = [prompt]
+    lat_center, lon_center = records[0]['lat'], records[0]['lon'] % 360
+    track = [(lat_center, lon_center)]
         
     for t, (record, world) in enumerate(zip(records, worlds)): # iterates over time
-        if 'climax' in predpath:
-            lats = np.linspace(90, -90, 128)
-            lons = np.linspace(0, 360, 256, endpoint=False)
-            data_vars={'t2m': (('lat', 'lon'), world[0]),
-                       'z': (('lat', 'lon'), world[1]),
-                       'u': (('lat', 'lon'), world[2]),
-                       'v': (('lat', 'lon'), world[3]),
-                       't': (('lat', 'lon'), world[4]),
-                       'q': (('lat', 'lon'), world[5])}
-        elif 'aurora' in predpath:
-            # print(world.shape)
-            lats = np.linspace(90, -90, 720)
-            lons = np.linspace(0, 360, 1440, endpoint=False)
-            data_vars={'slp': (('lat', 'lon'), world[:,:,0]),
-                       'u': (('lat', 'lon'), world[:,:,1]),
-                       'v': (('lat', 'lon'), world[:,:,2]),
-                       't': (('lat', 'lon'), world[:,:,3]),
-                       'q': (('lat', 'lon'), world[:,:,4])}
+        lats = np.linspace(90, -90, 32, endpoint=False)
+        lons = np.linspace(0, 360, 64, endpoint=False)
+        data_vars={'slp': (('lat', 'lon'), world[0]),
+                    'u': (('lat', 'lon'), world[1]),
+                    'v': (('lat', 'lon'), world[2]),
+                    't': (('lat', 'lon'), world[3]),
+                    'q': (('lat', 'lon'), world[4])}
         
         ds = xr.Dataset(
             data_vars=data_vars, 
@@ -104,21 +113,16 @@ for sid in tqdm(enumerate(sids)):
         ds = ds.reindex(lat=ds.lat[::-1])
         
         # LAZY TRACKER: Track SLP minimum using Geopotential (z) as a physical proxy
-        if 'climax' in predpath: key='z'
-        elif 'aurora' in predpath: key='slp'
-        # print(ds[key])
-        if t == 0:
-            lat_center, lon_center = record['lat'], record['lon'] % 360
-        else:
-            search_radius = 10.0
-            z_search = ds[key].sel(
-                lat=slice(lat_center - search_radius, lat_center + search_radius),
-                lon=slice(lon_center - search_radius, lon_center + search_radius)
-            )
-            if z_search.size > 0: 
-                min_idx = np.unravel_index(z_search.argmin().values, z_search.shape)
-                lat_center = z_search.lat[min_idx[0]].values.item()
-                lon_center = z_search.lon[min_idx[1]].values.item()
+        key='slp'
+        search_radius = 10.0
+        z_search = ds[key].sel(
+            lat=slice(lat_center - search_radius, lat_center + search_radius),
+            lon=slice(lon_center - search_radius, lon_center + search_radius)
+        )
+        if z_search.size > 0: 
+            min_idx = np.unravel_index(z_search.argmin().values, z_search.shape)
+            lat_center = z_search.lat[min_idx[0]].values.item()
+            lon_center = z_search.lon[min_idx[1]].values.item()
                 
         track.append((lat_center, lon_center))
 
@@ -147,28 +151,16 @@ for sid in tqdm(enumerate(sids)):
         interp_points = np.stack([lat_grid.ravel(), lon_grid.ravel()], axis=-1)
         interp_values = interp(interp_points).reshape(s, s, data.shape[0])
         
-        if 'climax' in outpath:
-            t2m_slice = interp_values[:, :, 0]
-            z_slice = interp_values[:, :, 1]
-            u_slice = interp_values[:, :, 2]
-            v_slice = interp_values[:, :, 3]
-            t_slice = interp_values[:, :, 4]
-            q_slice = interp_values[:, :, 5]
-                
-            # Formula: P_slp = P_level * exp(Phi / (Rd * T))
-            slp = 925 * np.exp(z_slice / (287.05 * t2m_slice))
-        elif 'aurora' in outpath:
-            slp_slice = interp_values[:, :, 0]
-            u_slice = interp_values[:, :, 1]
-            v_slice = interp_values[:, :, 2]
-            t_slice = interp_values[:, :, 3]
-            q_slice = interp_values[:, :, 4]
+        slp_slice = interp_values[:, :, 0]
+        u_slice = interp_values[:, :, 1]
+        v_slice = interp_values[:, :, 2]
+        t_slice = interp_values[:, :, 3]
+        q_slice = interp_values[:, :, 4]
         
         frame = np.stack([slp_slice, u_slice, v_slice, t_slice, q_slice], axis=-1) # We want H x W x V
         boxes.append(frame)
 
-    # result = np.stack(boxes, axis=0)
-    # np.save(os.path.join(outpath, f'{sid}.npy'), result)
+    # print([box.shape for box in boxes])
     os.makedirs(os.path.join(outpath, sid), exist_ok=True)
     for i in range(len(boxes)):
         np.save(os.path.join(outpath, sid, f'{i}.npy'), boxes[i])

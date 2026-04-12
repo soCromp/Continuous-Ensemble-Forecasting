@@ -1,11 +1,11 @@
 {
     "name": "continuous-24+6h",
     "model": "continuous-24+6h",
-    "batch_size":50,
+    "batch_size":30,
     "spacing": 1,
-    "t_max": 48,
-    "t_direct": 6,
-    "t_iter": 24,
+    "t_max": 8,
+    "t_direct": 1,
+    "t_iter": 8,
     "n_ens": 10,
     "alpha": 1.0
 }
