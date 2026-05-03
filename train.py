@@ -17,7 +17,7 @@ from utils import *
 from loss import *
 from sampler import *
 
-data_directory = 'data/windmag' # no trailing /
+data_directory = 'data/multivar' # no trailing /
 result_directory = 'model/' # yes trailing /
 
 variable_names = ['slp', 'u', 'v', 't', 'q']
