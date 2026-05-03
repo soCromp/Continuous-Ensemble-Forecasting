@@ -29,7 +29,7 @@ model_directory = '/mnt/data/sonia/cef/models/multivar'
 
 variable_names = ['slp', 'u', 'v', 't', 'q']
 num_variables, num_static_fields = 5, 2
-max_horizon = 240 # Maximum time horizon for the model. Used for scaling time embedding and making sure we don't go outside dataset
+
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -251,9 +251,9 @@ for previous, current, time_labels in tqdm(loader):
             latents = get_latents(latent_shape, n_direct, alpha=alpha)
             
             if deterministic:
-                predicted = model(class_labels, direct_time_labels_repeated / 240)
+                predicted = model(class_labels, direct_time_labels_repeated / t_max)
             else:
-                predicted = sampler_fn(model, latents, class_labels, direct_time_labels_repeated / 240, 
+                predicted = sampler_fn(model, latents, class_labels, direct_time_labels_repeated / t_max, 
                                     sigma_max=80, sigma_min=0.03, rho=7, num_steps=20, S_churn=2.5, S_min=0.75, S_max=80, S_noise=1.05)
 
             predicted_combined[:, :, i*n_direct:(i+1)*n_direct] = predicted.view(n_samples, n_ens, n_direct, num_variables, dx, dy)

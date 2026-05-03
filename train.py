@@ -22,7 +22,6 @@ result_directory = '/mnt/data/sonia/cef/models/multivar/'
 
 variable_names = ['slp', 'u', 'v', 't', 'q']
 num_variables, num_static_fields = 5, 2
-max_horizon = 240 # Maximum time horizon for the model. Used for scaling time embedding and making sure we don't go outside dataset
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -52,6 +51,10 @@ learning_rate   = config['learning_rate']
 filters         = config['filters']
 conditioning_times   = config['conditioning_times']
 model_choice    = config['model']
+
+
+# Maximum time horizon for the model. Used for scaling time embedding and making sure we don't go outside dataset
+max_horizon = t_max 
 
 # Copy config
 result_path = Path(f'{result_directory}/{name}')
