@@ -20,12 +20,12 @@ from utils import *
 from loss import *
 from sampler import *
 
-START = 12888
+START = 0
 STOP = 30000000
 
-result_directory = '/mnt/data/sonia/cef/results/multivar'
-data_directory = '/mnt/data/sonia/cef/in/multivar'
-model_directory = '/mnt/data/sonia/cef/models/multivar'
+result_directory = './results' # no trailing /
+data_directory = './data/multivar' # no trailing /
+model_directory = './model' # no trailing / and no model name (ie continuous-24+6h is specified in the config)
 
 variable_names = ['slp', 'u', 'v', 't', 'q']
 num_variables, num_static_fields = 5, 2
@@ -291,81 +291,81 @@ for previous, current, time_labels in tqdm(loader):
     torch.cuda.empty_cache()
     
 
-# Calculate metrics
-metrics = zarr.open_group('evaluation_metrics.zarr', mode='a')
+# # Calculate metrics
+# metrics = zarr.open_group('evaluation_metrics.zarr', mode='a')
 
-calculate_WCRPS = calculate_AreaWeightedRMSE(lat, lon, device).CRPS
-calculate_WScores = calculate_AreaWeightedRMSE(lat, lon, device).skill_and_spread
-calculate_WMAE = calculate_AreaWeightedRMSE(lat, lon, device).mae
+# calculate_WCRPS = calculate_AreaWeightedRMSE(lat, lon, device).CRPS
+# calculate_WScores = calculate_AreaWeightedRMSE(lat, lon, device).skill_and_spread
+# calculate_WMAE = calculate_AreaWeightedRMSE(lat, lon, device).mae
 
-skill_list = []
-spread_list = []
-ssr_list = []
-CRPS_list = []
-dx_same_list = []
-dx_different_list = []
-dx_truth_list = []
+# skill_list = []
+# spread_list = []
+# ssr_list = []
+# CRPS_list = []
+# dx_same_list = []
+# dx_different_list = []
+# dx_truth_list = []
 
-i = 0
-with torch.no_grad():
-    for previous, current, time_labels in tqdm(loader):
+# i = 0
+# with torch.no_grad():
+#     for previous, current, time_labels in tqdm(loader):
         
-        n_times = time_labels.shape[1]
-        n_samples, _, dx, dy = current.shape
+#         n_times = time_labels.shape[1]
+#         n_samples, _, dx, dy = current.shape
 
-        truth = renormalize(current.to(device).view(n_samples, n_times, num_variables, dx, dy))
+#         truth = renormalize(current.to(device).view(n_samples, n_times, num_variables, dx, dy))
        
-        forecast = predictions[i:i + truth.shape[0]]
-        if forecast.shape[2] != truth.shape[1]:
-            forecast = forecast[:, :, :truth.shape[1]]
-        forecast = torch.tensor(forecast, device=device)
-        i = i + truth.shape[0]
+#         forecast = predictions[i:i + truth.shape[0]]
+#         if forecast.shape[2] != truth.shape[1]:
+#             forecast = forecast[:, :, :truth.shape[1]]
+#         forecast = torch.tensor(forecast, device=device)
+#         i = i + truth.shape[0]
         
-        # Add windspeed
-        w_truth = (truth[:,:,3]**2 + truth[:,:,4]**2).sqrt().unsqueeze(2)
-        truth = torch.cat((truth, w_truth), dim=2)
-        w_forecast = (forecast[:,:,:,3]**2 + forecast[:,:,:,4]**2).sqrt().unsqueeze(3)
-        forecast = torch.cat((forecast, w_forecast), dim=3)        
+#         # Add windspeed
+#         w_truth = (truth[:,:,3]**2 + truth[:,:,4]**2).sqrt().unsqueeze(2)
+#         truth = torch.cat((truth, w_truth), dim=2)
+#         w_forecast = (forecast[:,:,:,3]**2 + forecast[:,:,:,4]**2).sqrt().unsqueeze(3)
+#         forecast = torch.cat((forecast, w_forecast), dim=3)        
         
-        # Calculate metrics
-        skill, spread, ssr = calculate_WScores(forecast, truth)
-        CRPS = calculate_WCRPS(forecast, truth)
-        dx_same = calculate_WMAE(forecast[:, :, 1:, :], forecast[:, :, :-1, :])
-        dx_different = calculate_WMAE(forecast[:, 1:, 1:, :], forecast[:, :-1, :-1, :])
-        dx_truth = calculate_WMAE(truth[:, 1:, :].unsqueeze(1), truth[:, :-1, :].unsqueeze(1))
+#         # Calculate metrics
+#         skill, spread, ssr = calculate_WScores(forecast, truth)
+#         CRPS = calculate_WCRPS(forecast, truth)
+#         dx_same = calculate_WMAE(forecast[:, :, 1:, :], forecast[:, :, :-1, :])
+#         dx_different = calculate_WMAE(forecast[:, 1:, 1:, :], forecast[:, :-1, :-1, :])
+#         dx_truth = calculate_WMAE(truth[:, 1:, :].unsqueeze(1), truth[:, :-1, :].unsqueeze(1))
 
 
-        # Append to list
-        skill_list.append(skill)
-        spread_list.append(spread)
-        ssr_list.append(ssr)
-        CRPS_list.append(CRPS)
-        dx_same_list.append(dx_same)
-        dx_different_list.append(dx_different)
-        dx_truth_list.append(dx_truth)
+#         # Append to list
+#         skill_list.append(skill)
+#         spread_list.append(spread)
+#         ssr_list.append(ssr)
+#         CRPS_list.append(CRPS)
+#         dx_same_list.append(dx_same)
+#         dx_different_list.append(dx_different)
+#         dx_truth_list.append(dx_truth)
         
 
-skill = torch.tensor(np.array(skill_list)).mean(axis=0).cpu().numpy()
-spread = torch.tensor(np.array(spread_list)).mean(axis=0).cpu().numpy()
-ssr = torch.tensor(np.array(ssr_list)).mean(axis=0).cpu().numpy()
-CRPS = torch.tensor(np.array(CRPS_list)).mean(axis=0).cpu().numpy()
-dx_same = torch.tensor(np.array(dx_same_list)).mean(axis=0).cpu().numpy()
-dx_different = torch.tensor(np.array(dx_different_list)).mean(axis=0).cpu().numpy()
-dx_truth = torch.tensor(np.array(dx_truth_list)).mean(axis=0).cpu().numpy()
+# skill = torch.tensor(np.array(skill_list)).mean(axis=0).cpu().numpy()
+# spread = torch.tensor(np.array(spread_list)).mean(axis=0).cpu().numpy()
+# ssr = torch.tensor(np.array(ssr_list)).mean(axis=0).cpu().numpy()
+# CRPS = torch.tensor(np.array(CRPS_list)).mean(axis=0).cpu().numpy()
+# dx_same = torch.tensor(np.array(dx_same_list)).mean(axis=0).cpu().numpy()
+# dx_different = torch.tensor(np.array(dx_different_list)).mean(axis=0).cpu().numpy()
+# dx_truth = torch.tensor(np.array(dx_truth_list)).mean(axis=0).cpu().numpy()
 
-# Check if group for eval_name exists, else create it
-if name not in metrics:
-    metrics.create_group(name)
+# # Check if group for eval_name exists, else create it
+# if name not in metrics:
+#     metrics.create_group(name)
 
-# Store the metrics in the corresponding group
-group = metrics[name]
-group.array('skill', skill, overwrite=True)
-group.array('spread', spread, overwrite=True)
-group.array('SSR', ssr, overwrite=True)
-group.array('CRPS', CRPS, overwrite=True)
-group.array('dx_same', dx_same, overwrite=True)
-group.array('dx_different', dx_different, overwrite=True)
-group.array('dx_truth', dx_truth, overwrite=True)
-group.array('times', forecasting_times, overwrite=True)
+# # Store the metrics in the corresponding group
+# group = metrics[name]
+# group.array('skill', skill, overwrite=True)
+# group.array('spread', spread, overwrite=True)
+# group.array('SSR', ssr, overwrite=True)
+# group.array('CRPS', CRPS, overwrite=True)
+# group.array('dx_same', dx_same, overwrite=True)
+# group.array('dx_different', dx_different, overwrite=True)
+# group.array('dx_truth', dx_truth, overwrite=True)
+# group.array('times', forecasting_times, overwrite=True)
 
-print(f"Metrics saved under {name}")
+# print(f"Metrics saved under {name}")

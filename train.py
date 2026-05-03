@@ -17,8 +17,8 @@ from utils import *
 from loss import *
 from sampler import *
 
-data_directory = '/mnt/data/sonia/cef/in/multivar'
-result_directory = '/mnt/data/sonia/cef/models/multivar/'
+data_directory = 'data/windmag' # no trailing /
+result_directory = 'model/' # yes trailing /
 
 variable_names = ['slp', 'u', 'v', 't', 'q']
 num_variables, num_static_fields = 5, 2
