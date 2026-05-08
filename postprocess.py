@@ -12,8 +12,8 @@ from random import randint
 import datetime 
 
 promptpath = '/home/cyclone/train/multivar/0.25/date/natlantic/test'
-predpath = '/mnt/data/sonia/cef/results/multivar/continuous-24+6h-final/continuous-24+6h.zarr'
-outpath = '/mnt/data/sonia/cef/patches/multivar/test'
+predpath = '/mnt/data/sonia/cef/results/multivar/3/final/continuous-24+6h.zarr'
+outpath = '/mnt/data/sonia/cef/patches/multivar/3'
 os.makedirs(outpath, exist_ok=True)
 
 # preds size (13145, 10, 8, 5, 32, 64): (t, ensemble, predictions into future, lat, lon)
@@ -25,8 +25,8 @@ START_TIME = datetime.datetime(2016,1,1,6)
 regmask = xr.open_dataset('/home/cyclone/regmask_0723_anl.nc')
 
 ####### make dataframe of all tracks 
-trackspath1='/home/sonia/mcms/tracker/1940-2010/era5/out_era5/era5/mcms_era5_1940_2010_tracks.txt'
-trackspath2='/home/sonia/mcms/tracker/2010-2024/era5/out_era5/era5/FIXEDmcms_era5_2010_2024_tracks.txt'
+trackspath1='/mnt/data/sonia/mcms/tracker/1940-2010/era5/out_era5/era5/mcms_era5_1940_2010_tracks.txt'
+trackspath2='/mnt/data/sonia/mcms/tracker/2010-2024/era5/out_era5/era5/FIXEDmcms_era5_2010_2024_tracks.txt'
 joinyear = 2010 # overlap for the track data
 
 tracks1 = pd.read_csv(trackspath1, sep=' ', header=None, 
